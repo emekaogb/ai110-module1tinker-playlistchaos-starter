@@ -327,7 +327,7 @@ def render_playlist(label, songs):
         with col1:
             st.write(
                 f"- **{song['title']}** by {song['artist']} "
-                f"(genre {song['genre']}, energy {song['energy']}, mood {mood}) "
+                f"(genre: {song['genre']}, energy: {song['energy']}, mood: {mood}) "
                 f"[{tags}]"
             )
         with col2:
@@ -343,7 +343,7 @@ def lucky_section(playlists):
 
     mode = st.selectbox(
         "Pick from",
-        options=["any", "hype", "chill", "mix"],
+        options=["any", "hype", "chill", "mixed"],
         index=0,
     )
 
