@@ -5,22 +5,26 @@ from playlist_logic import (
     Song,
     build_playlists,
     compute_playlist_stats,
+    delete_song,
     history_summary,
     lucky_pick,
     merge_playlists,
     normalize_song,
     search_songs,
+    song_exists,
 )
 
 
 def init_state():
     """Initialize Streamlit session state."""
     if "songs" not in st.session_state:
-        st.session_state.songs = default_songs()
+        st.session_state.songs = [normalize_song(song) for song in default_songs()]
     if "profile" not in st.session_state:
         st.session_state.profile = dict(DEFAULT_PROFILE)
     if "history" not in st.session_state:
         st.session_state.history = []
+    if "recently_added" not in st.session_state:
+        st.session_state.recently_added = []
 
 
 def default_songs():
@@ -228,6 +232,18 @@ def add_song_sidebar():
     """Render the Add Song controls in the sidebar."""
     st.sidebar.header("Add a song")
 
+    # Display any message from previous interaction
+    if "add_song_message" not in st.session_state:
+        st.session_state.add_song_message = None
+    if "add_song_message_type" not in st.session_state:
+        st.session_state.add_song_message_type = None
+
+    if st.session_state.add_song_message:
+        if st.session_state.add_song_message_type == "error":
+            st.sidebar.error(st.session_state.add_song_message)
+        else:
+            st.sidebar.success(st.session_state.add_song_message)
+
     title = st.sidebar.text_input("Title")
     artist = st.sidebar.text_input("Artist")
     genre = st.sidebar.selectbox(
@@ -249,10 +265,20 @@ def add_song_sidebar():
             "tags": tags,
         }
         if title and artist:
-            normalized = normalize_song(song)
-            all_songs = st.session_state.songs[:]
-            all_songs.append(normalized)
-            st.session_state.songs = all_songs
+            if song_exists(st.session_state.songs, title, artist):
+                st.session_state.add_song_message = f"Song '{title}' by {artist} already exists in the playlist!"
+                st.session_state.add_song_message_type = "error"
+            else:
+                normalized = normalize_song(song)
+                all_songs = st.session_state.songs[:]
+                all_songs.append(normalized)
+                st.session_state.songs = all_songs
+                recently_added = st.session_state.recently_added[:]
+                recently_added.append(normalized)
+                st.session_state.recently_added = recently_added
+                st.session_state.add_song_message = f"Added '{title}' by {artist}!"
+                st.session_state.add_song_message_type = "success"
+        st.rerun()
 
 
 def playlist_tabs(playlists):
@@ -276,8 +302,19 @@ def render_playlist(label, songs):
         st.write("No songs in this playlist.")
         return
 
-    query = st.text_input(f"Search {label} playlist by artist", key=f"search_{label}")
-    filtered = search_songs(songs, query, field="artist")
+    query = st.text_input(f"Search {label} playlist by title or artist", key=f"search_{label}")
+    
+    # Filter by both title and artist
+    if query:
+        q = query.lower().strip()
+        filtered = []
+        for song in songs:
+            title = str(song.get("title", "")).lower()
+            artist = str(song.get("artist", "")).lower()
+            if q in title or q in artist:
+                filtered.append(song)
+    else:
+        filtered = songs
 
     if not filtered:
         st.write("No matching songs.")
@@ -286,11 +323,18 @@ def render_playlist(label, songs):
     for song in filtered:
         mood = song.get("mood", "?")
         tags = ", ".join(song.get("tags", []))
-        st.write(
-            f"- **{song['title']}** by {song['artist']} "
-            f"(genre {song['genre']}, energy {song['energy']}, mood {mood}) "
-            f"[{tags}]"
-        )
+        col1, col2 = st.columns([0.85, 0.15])
+        with col1:
+            st.write(
+                f"- **{song['title']}** by {song['artist']} "
+                f"(genre {song['genre']}, energy {song['energy']}, mood {mood}) "
+                f"[{tags}]"
+            )
+        with col2:
+            if st.button("Delete", key=f"del_{label}_{song['title']}_{song['artist']}"):
+                updated_songs = delete_song(st.session_state.songs, song["title"], song["artist"])
+                st.session_state.songs = updated_songs
+                st.rerun()
 
 
 def lucky_section(playlists):
@@ -299,7 +343,7 @@ def lucky_section(playlists):
 
     mode = st.selectbox(
         "Pick from",
-        options=["any", "hype", "chill"],
+        options=["any", "hype", "chill", "mix"],
         index=0,
     )
 
@@ -345,6 +389,26 @@ def stats_section(playlists):
         st.write("No top artist yet.")
 
 
+def recently_added_section():
+    """Render the recently added songs overview."""
+    st.header("Recently Added")
+
+    recently_added = st.session_state.recently_added
+    if not recently_added:
+        st.write("No songs added yet.")
+        return
+
+    for song in recently_added:
+        st.write(
+            f"- **{song['title']}** by {song['artist']} "
+            f"(genre {song['genre']}, energy {song['energy']})"
+        )
+
+    if st.button("Clear recently added"):
+        st.session_state.recently_added = []
+        st.rerun()
+
+
 def history_section():
     """Render the pick history overview."""
     st.header("History")
@@ -369,7 +433,7 @@ def clear_controls():
     """Render a small section for clearing data."""
     st.sidebar.header("Manage data")
     if st.sidebar.button("Reset songs to default"):
-        st.session_state.songs = default_songs()
+        st.session_state.songs = [normalize_song(song) for song in default_songs()]
     if st.sidebar.button("Clear history"):
         st.session_state.history = []
 
@@ -399,6 +463,8 @@ def main():
     lucky_section(merged_playlists)
     st.divider()
     stats_section(merged_playlists)
+    st.divider()
+    recently_added_section()
     st.divider()
     history_section()
 

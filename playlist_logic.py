@@ -183,6 +183,8 @@ def lucky_pick(
         songs = playlists.get("Hype", [])
     elif mode == "chill":
         songs = playlists.get("Chill", [])
+    elif mode == "mix":
+        songs = playlists.get("Mixed", [])
     else:
         songs = playlists.get("Hype", []) + playlists.get("Chill", [])
 
@@ -206,3 +208,28 @@ def history_summary(history: List[Song]) -> Dict[str, int]:
         else:
             counts[mood] += 1
     return counts
+
+
+def song_exists(songs: List[Song], title: str, artist: str) -> bool:
+    """Check if a song with the same title and artist already exists."""
+    normalized_title = normalize_title(title)
+    normalized_artist = normalize_artist(artist)
+    
+    for song in songs:
+        if (song.get("title") == normalized_title and 
+            song.get("artist") == normalized_artist):
+            return True
+    return False
+
+
+def delete_song(songs: List[Song], title: str, artist: str) -> List[Song]:
+    """Remove a song by title and artist, return the updated list."""
+    normalized_title = normalize_title(title)
+    normalized_artist = normalize_artist(artist)
+    
+    filtered = []
+    for song in songs:
+        if not (song.get("title") == normalized_title and 
+                song.get("artist") == normalized_artist):
+            filtered.append(song)
+    return filtered
